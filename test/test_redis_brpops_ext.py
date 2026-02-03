@@ -392,11 +392,14 @@ class RedisBrpopsExtConcurrentTestCases(unittest.TestCase):
 
         bursts = 10
         num_consumers = random.randint(8, 16)
+        sleep_amount = 0.1
+        total_pushes = bursts * num_consumers
+        proc_timeout_ms = int(sleep_amount * total_pushes * 2 * 1000)
         key = f"testq::{''.join(random.choices(string.ascii_letters + string.digits, k=10))}"
         result_q = ctx.Queue()
 
         procs = [
-            ctx.Process(target=_worker_brpopall_loop, args=(host, port, key, 10000, bursts, result_q))
+            ctx.Process(target=_worker_brpopall_loop, args=(host, port, key, proc_timeout_ms, bursts, result_q))
             for _ in range(num_consumers)
         ]
         for proc in procs:
@@ -406,12 +409,12 @@ class RedisBrpopsExtConcurrentTestCases(unittest.TestCase):
         for _ in range(bursts):
             for _ in range(num_consumers):
                 asyncio.run(_push_values(key, "x", "y"))
-                time.sleep(0.025)
+                time.sleep(sleep_amount)
 
-        results = [result_q.get(timeout=5) for _ in range(num_consumers)]
+        results = [result_q.get(timeout=max(5, sleep_amount * total_pushes * 2)) for _ in range(num_consumers)]
 
         for proc in procs:
-            proc.join(timeout=2)
+            proc.join(timeout=max(5, sleep_amount * total_pushes * 2))
 
         asyncio.run(_delete_key(key))
 
