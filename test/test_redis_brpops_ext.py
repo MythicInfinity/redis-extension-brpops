@@ -396,7 +396,7 @@ class RedisBrpopsExtConcurrentTestCases(unittest.TestCase):
         result_q = ctx.Queue()
 
         procs = [
-            ctx.Process(target=_worker_brpopall_loop, args=(host, port, key, 5000, bursts, result_q))
+            ctx.Process(target=_worker_brpopall_loop, args=(host, port, key, 10000, bursts, result_q))
             for _ in range(num_consumers)
         ]
         for proc in procs:
@@ -406,7 +406,7 @@ class RedisBrpopsExtConcurrentTestCases(unittest.TestCase):
         for _ in range(bursts):
             for _ in range(num_consumers):
                 asyncio.run(_push_values(key, "x", "y"))
-            time.sleep(0.025)
+                time.sleep(0.025)
 
         results = [result_q.get(timeout=5) for _ in range(num_consumers)]
 
@@ -434,7 +434,7 @@ class RedisBrpopsExtConcurrentTestCases(unittest.TestCase):
         result_q = ctx.Queue()
 
         procs = [
-            ctx.Process(target=_worker_brpopbatch_loop, args=(host, port, key, batch_sizes[i], 5000, bursts, result_q))
+            ctx.Process(target=_worker_brpopbatch_loop, args=(host, port, key, batch_sizes[i], 10000, bursts, result_q))
             for i in range(num_consumers)
         ]
         for proc in procs:
@@ -477,7 +477,7 @@ class RedisBrpopsExtConcurrentTestCases(unittest.TestCase):
 
         procs = []
         for _ in range(num_all):
-            procs.append(ctx.Process(target=_worker_brpopall_loop, args=(host, port, key_all, 5000, bursts, result_q)))
+            procs.append(ctx.Process(target=_worker_brpopall_loop, args=(host, port, key_all, 10000, bursts, result_q)))
         for i in range(num_batch):
             procs.append(
                 ctx.Process(
@@ -492,6 +492,7 @@ class RedisBrpopsExtConcurrentTestCases(unittest.TestCase):
         for _ in range(bursts):
             for _ in range(num_all):
                 asyncio.run(_push_values(key_all, "x", "y"))
+                time.sleep(0.025)
             values = [str(i) for i in range(sum(batch_sizes))]
             asyncio.run(_push_values(key_batch, *values))
             time.sleep(0.025)
