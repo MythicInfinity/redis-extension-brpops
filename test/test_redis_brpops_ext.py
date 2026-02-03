@@ -276,7 +276,6 @@ class RedisBrpopsExtConcurrentTestCases(unittest.TestCase):
         for proc in procs:
             proc.join(timeout=1)
 
-        asyncio.run(_delete_key(key))
 
         self._assert_no_worker_errors(results)
         self.assertEqual(results.count(None), 0)
@@ -286,6 +285,8 @@ class RedisBrpopsExtConcurrentTestCases(unittest.TestCase):
         self.assertEqual(len(remaining), 2)
         combined = sorted(flattened + remaining)
         self.assertEqual(combined, sorted([b"1", b"2", b"3", b"4", b"5", b"6", b"7", b"8"]))
+
+        asyncio.run(_delete_key(key))
 
     def test_mixed_commands_same_key(self):
         """brpopall and brpopbatch on the same key should both return valid list data."""
