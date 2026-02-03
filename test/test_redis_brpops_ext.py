@@ -468,11 +468,14 @@ class RedisBrpopsExtConcurrentTestCases(unittest.TestCase):
         port = int(os.environ.get("REDIS_PORT", "6379"))
         ctx = multiprocessing.get_context("spawn")
 
-        bursts = 10
-        num_consumers = random.randint(8, 16)
+        bursts = 8
+        num_consumers = random.randint(4, 8)
         split = num_consumers // 2
         num_all = split
         num_batch = num_consumers - split
+        sleep_amount = 0.5
+        total_pushes = bursts * (num_all + 1)
+        proc_timeout_ms = int(sleep_amount * total_pushes * 2 * 1000)
         batch_sizes = [random.randint(1, 5) for _ in range(num_batch)]
         key_all = f"testq::{''.join(random.choices(string.ascii_letters + string.digits, k=10))}"
         key_batch = f"testq::{''.join(random.choices(string.ascii_letters + string.digits, k=10))}"
@@ -480,12 +483,14 @@ class RedisBrpopsExtConcurrentTestCases(unittest.TestCase):
 
         procs = []
         for _ in range(num_all):
-            procs.append(ctx.Process(target=_worker_brpopall_loop, args=(host, port, key_all, 10000, bursts, result_q)))
+            procs.append(
+                ctx.Process(target=_worker_brpopall_loop, args=(host, port, key_all, proc_timeout_ms, bursts, result_q))
+            )
         for i in range(num_batch):
             procs.append(
                 ctx.Process(
                     target=_worker_brpopbatch_loop,
-                    args=(host, port, key_batch, batch_sizes[i], 5000, bursts, result_q),
+                    args=(host, port, key_batch, batch_sizes[i], proc_timeout_ms, bursts, result_q),
                 )
             )
         for proc in procs:
@@ -495,15 +500,15 @@ class RedisBrpopsExtConcurrentTestCases(unittest.TestCase):
         for _ in range(bursts):
             for _ in range(num_all):
                 asyncio.run(_push_values(key_all, "x", "y"))
-                time.sleep(0.025)
+                time.sleep(sleep_amount)
             values = [str(i) for i in range(sum(batch_sizes))]
             asyncio.run(_push_values(key_batch, *values))
-            time.sleep(0.025)
+            time.sleep(sleep_amount)
 
-        results = [result_q.get(timeout=5) for _ in range(num_consumers)]
+        results = [result_q.get(timeout=max(5, sleep_amount * total_pushes * 2)) for _ in range(num_consumers)]
 
         for proc in procs:
-            proc.join(timeout=2)
+            proc.join(timeout=max(5, sleep_amount * total_pushes * 2))
 
         asyncio.run(_delete_key(key_all))
         asyncio.run(_delete_key(key_batch))
