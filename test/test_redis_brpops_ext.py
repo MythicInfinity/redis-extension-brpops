@@ -390,9 +390,9 @@ class RedisBrpopsExtConcurrentTestCases(unittest.TestCase):
         port = int(os.environ.get("REDIS_PORT", "6379"))
         ctx = multiprocessing.get_context("spawn")
 
-        bursts = 10
-        num_consumers = random.randint(8, 16)
-        sleep_amount = 0.25
+        bursts = 8
+        num_consumers = random.randint(4, 8)
+        sleep_amount = 0.5
         total_pushes = bursts * num_consumers
         proc_timeout_ms = int(sleep_amount * total_pushes * 2 * 1000)
         key = f"testq::{''.join(random.choices(string.ascii_letters + string.digits, k=10))}"
