@@ -6,7 +6,7 @@ This example builds a custom Redis image that compiles and loads the `brpopall`/
 
 ```bash
 docker build -t redis-brpops \
-  --build-arg GIT_TAG=main \
+  --build-arg GIT_TAG=master \
   .
 ```
 
