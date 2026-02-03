@@ -24,8 +24,7 @@ jobs:
       - name: Build and start Redis with module
         run: |
           docker build -f scripts/Dockerfile.redis -t redis-brpops-test .
-          docker run -d --name redis-brpops-test -p 6379:6379 -v "$GITHUB_WORKSPACE":/opt/redis_brpops redis-brpops-test
-          docker exec redis-brpops-test /opt/redis_brpops/scripts/compile_and_load.sh
+          docker run -d --name redis-brpops-test -p 6379:6379 redis-brpops-test
 
       - name: Run tests
         env:
