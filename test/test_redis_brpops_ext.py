@@ -9,21 +9,21 @@ import unittest
 import pytest
 import redis.asyncio as redis
 
-from forge.api.config import RedisConfig
-from forge.test.util.test_util import set_isolated_test_rnd_seed
+def _set_isolated_test_rnd_seed() -> None:
+    random.seed((os.getpid() * time.time_ns()) % (2**32))
 
 
-def _get_redis_config() -> RedisConfig:
-    return RedisConfig(
+def _get_redis_client() -> redis.Redis:
+    return redis.Redis(
         host=os.environ.get("REDIS_HOST", "redis"),
         port=int(os.environ.get("REDIS_PORT", "6379")),
-        db=None,
-        password=None,
+        db=os.environ.get("REDIS_DB", None),
+        password=os.environ.get("REDIS_PASSWORD", nONE),
     )
 
 
 async def _push_values(key: str, *values) -> None:
-    r = _get_redis_config().get_conn_without_connection_pool()
+    r = _get_redis_client()
     try:
         await r.rpush(key, *values)
     finally:
@@ -31,25 +31,9 @@ async def _push_values(key: str, *values) -> None:
 
 
 async def _delete_key(key: str) -> None:
-    r = _get_redis_config().get_conn_without_connection_pool()
+    r = _get_redis_client()
     try:
         await r.delete(key)
-    finally:
-        await r.aclose()
-
-
-async def _execute_brpopall(key: str, timeout_ms: int):
-    r = _get_redis_config().get_conn_without_connection_pool()
-    try:
-        return await r.execute_command("brpopall", key, timeout_ms)
-    finally:
-        await r.aclose()
-
-
-async def _execute_brpopbatch(key: str, count: int, timeout_ms: int):
-    r = _get_redis_config().get_conn_without_connection_pool()
-    try:
-        return await r.execute_command("brpopbatch", key, count, timeout_ms)
     finally:
         await r.aclose()
 
@@ -87,8 +71,8 @@ class RedisBrpopsExtAsyncTestCases(unittest.IsolatedAsyncioTestCase):
     r: redis.Redis
 
     async def asyncSetUp(self) -> None:
-        set_isolated_test_rnd_seed()
-        self.r = _get_redis_config().get_conn_without_connection_pool()
+        _set_isolated_test_rnd_seed()
+        self.r = _get_redis_client()
         self.qname = f"testq::{''.join(random.choices(string.ascii_letters + string.digits, k=10))}"
 
     async def asyncTearDown(self):
@@ -120,7 +104,7 @@ class RedisBrpopsExtAsyncTestCases(unittest.IsolatedAsyncioTestCase):
 @pytest.mark.redis_ext_test
 class RedisBrpopsExtConcurrentTestCases(unittest.TestCase):
     def test_brpopall_concurrent_both_timeout(self):
-        set_isolated_test_rnd_seed()
+        _set_isolated_test_rnd_seed()
         key = f"testq::{''.join(random.choices(string.ascii_letters + string.digits, k=10))}"
         host = os.environ.get("REDIS_HOST", "redis")
         port = int(os.environ.get("REDIS_PORT", "6379"))
@@ -142,7 +126,7 @@ class RedisBrpopsExtConcurrentTestCases(unittest.TestCase):
         self.assertEqual(results.count(None), 2)
 
     def test_brpopall_concurrent_one_timeout(self):
-        set_isolated_test_rnd_seed()
+        _set_isolated_test_rnd_seed()
         key = f"testq::{''.join(random.choices(string.ascii_letters + string.digits, k=10))}"
         host = os.environ.get("REDIS_HOST", "redis")
         port = int(os.environ.get("REDIS_PORT", "6379"))
@@ -169,7 +153,7 @@ class RedisBrpopsExtConcurrentTestCases(unittest.TestCase):
         self.assertEqual(data_results, [[b"b", b"a"]])
 
     def test_brpopbatch_concurrent_one_timeout(self):
-        set_isolated_test_rnd_seed()
+        _set_isolated_test_rnd_seed()
         key = f"testq::{''.join(random.choices(string.ascii_letters + string.digits, k=10))}"
         host = os.environ.get("REDIS_HOST", "redis")
         port = int(os.environ.get("REDIS_PORT", "6379"))
