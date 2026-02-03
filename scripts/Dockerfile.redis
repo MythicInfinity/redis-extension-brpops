@@ -1,6 +1,6 @@
-FROM redis:7.4-alpine
+FROM redis:7.4-alpine AS builder
 
-RUN apk add --no-cache gcc libc-dev bash
+RUN apk add --no-cache gcc libc-dev
 
 RUN mkdir -p /opt/redis_ext_brpops/
 ADD ./src /opt/redis_ext_brpops/src
@@ -9,5 +9,8 @@ RUN cd /opt/redis_ext_brpops/src \
     && gcc -W -Wall -fno-common -g -ggdb -std=c99 -O2 -fPIC -c -o /tmp/brpops.o redis_brpops.c \
     && ld -o /tmp/brpops.so /tmp/brpops.o -shared
 
-CMD ["redis-server", "--loadmodule", "/tmp/brpops.so", "--loglevel", "warning"]
+FROM redis:7.4-alpine
 
+COPY --from=builder /tmp/brpops.so /tmp/brpops.so
+
+CMD ["redis-server", "--loadmodule", "/tmp/brpops.so", "--loglevel", "warning"]
