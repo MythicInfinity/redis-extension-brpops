@@ -19,12 +19,12 @@ jobs:
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r redis_ext_brpops/test/requirements.txt
+          pip install -r test/requirements.txt
 
       - name: Build and start Redis with module
         run: |
-          docker build -f redis_ext_brpops/scripts/Dockerfile.redis -t redis-brpops-test redis_ext_brpops
-          docker run -d --name redis-brpops-test -p 6379:6379 -v "$GITHUB_WORKSPACE/redis_ext_brpops":/opt/redis_brpops redis-brpops-test
+          docker build -f scripts/Dockerfile.redis -t redis-brpops-test .
+          docker run -d --name redis-brpops-test -p 6379:6379 -v "$GITHUB_WORKSPACE":/opt/redis_brpops redis-brpops-test
           docker exec redis-brpops-test /opt/redis_brpops/scripts/compile_and_load.sh
 
       - name: Run tests
@@ -33,7 +33,7 @@ jobs:
           REDIS_HOST: 127.0.0.1
           REDIS_PORT: "6379"
         run: |
-          pytest redis_ext_brpops/test --junitxml=redis_ext_brpops/test/reports/junit.xml
+          pytest test --junitxml=test/reports/junit.xml
 
       - name: Cleanup
         if: always()
@@ -45,5 +45,5 @@ jobs:
         uses: dorny/test-reporter@v2
         with:
           name: Redis brpops tests
-          path: redis_ext_brpops/test/reports/junit.xml
+          path: test/reports/junit.xml
           reporter: python-xunit

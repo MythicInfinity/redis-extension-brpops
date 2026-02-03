@@ -1,5 +1,5 @@
 FROM redis:7.4-alpine
 
-RUN apk add --no-cache gcc libc-dev
+RUN apk add --no-cache gcc libc-dev bash
 
 CMD ["redis-server", "--loglevel", "warning"]

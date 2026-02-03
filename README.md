@@ -88,5 +88,5 @@ print(brpopbatch(r, "mylist", 2, 1000))
 ## Recommendations
 
 - Pin `GIT_TAG` to a commit SHA for deterministic builds.
-- Copy the [Dockerfile](examples/Dockerfile) to your source directory and adapt it to your needs.
+- Copy the [Dockerfile](example/Dockerfile) to your source directory and adapt it to your needs.
 - Keep your Redis base image version aligned with your production environment.
