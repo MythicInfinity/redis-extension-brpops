@@ -77,6 +77,46 @@ def _worker_brpopbatch(host: str, port: int, key: str, count: int, timeout_ms: i
     asyncio.run(_run())
 
 
+def _worker_brpopall_loop(host: str, port: int, key: str, timeout_ms: int, bursts: int, result_q):
+    async def _run():
+        r = redis.Redis(host=host, port=port)
+        total = 0
+        try:
+            for _ in range(bursts):
+                result = await r.execute_command("brpopall", key, timeout_ms)
+                if result is None:
+                    result_q.put({"error": "timeout"})
+                    return
+                total += len(result)
+            result_q.put({"count": total})
+        except Exception as exc:
+            result_q.put({"error": repr(exc)})
+        finally:
+            await r.aclose()
+
+    asyncio.run(_run())
+
+
+def _worker_brpopbatch_loop(host: str, port: int, key: str, count: int, timeout_ms: int, bursts: int, result_q):
+    async def _run():
+        r = redis.Redis(host=host, port=port)
+        total = 0
+        try:
+            for _ in range(bursts):
+                result = await r.execute_command("brpopbatch", key, count, timeout_ms)
+                if result is None:
+                    result_q.put({"error": "timeout"})
+                    return
+                total += len(result)
+            result_q.put({"count": total})
+        except Exception as exc:
+            result_q.put({"error": repr(exc)})
+        finally:
+            await r.aclose()
+
+    asyncio.run(_run())
+
+
 @pytest.mark.redis_ext_test
 class RedisBrpopsExtAsyncTestCases(unittest.IsolatedAsyncioTestCase):
     r: redis.Redis
@@ -342,3 +382,127 @@ class RedisBrpopsExtConcurrentTestCases(unittest.TestCase):
 
         self._assert_no_worker_errors([result])
         self.assertEqual(result, [b"x"])
+
+    def test_brpopall_stress(self):
+        """Stress test: many brpopall consumers over multiple bursts on one key."""
+        _set_isolated_test_rnd_seed()
+        host = os.environ.get("REDIS_HOST", "redis")
+        port = int(os.environ.get("REDIS_PORT", "6379"))
+        ctx = multiprocessing.get_context("spawn")
+
+        bursts = 10
+        num_consumers = random.randint(8, 16)
+        key = f"testq::{''.join(random.choices(string.ascii_letters + string.digits, k=10))}"
+        result_q = ctx.Queue()
+
+        procs = [
+            ctx.Process(target=_worker_brpopall_loop, args=(host, port, key, 2000, bursts, result_q))
+            for _ in range(num_consumers)
+        ]
+        for proc in procs:
+            proc.start()
+
+        time.sleep(0.1)
+        for _ in range(bursts):
+            for _ in range(num_consumers):
+                asyncio.run(_push_values(key, "x", "y"))
+
+        results = [result_q.get(timeout=5) for _ in range(num_consumers)]
+
+        for proc in procs:
+            proc.join(timeout=2)
+
+        asyncio.run(_delete_key(key))
+
+        self._assert_no_worker_errors(results)
+        counts = [res["count"] for res in results if isinstance(res, dict) and "count" in res]
+        self.assertEqual(len(counts), num_consumers)
+        self.assertEqual(sum(counts), num_consumers * bursts * 2)
+
+    def test_brpopbatch_stress(self):
+        """Stress test: many brpopbatch consumers with random batch sizes."""
+        _set_isolated_test_rnd_seed()
+        host = os.environ.get("REDIS_HOST", "redis")
+        port = int(os.environ.get("REDIS_PORT", "6379"))
+        ctx = multiprocessing.get_context("spawn")
+
+        bursts = 10
+        num_consumers = random.randint(8, 16)
+        batch_sizes = [random.randint(1, 5) for _ in range(num_consumers)]
+        key = f"testq::{''.join(random.choices(string.ascii_letters + string.digits, k=10))}"
+        result_q = ctx.Queue()
+
+        procs = [
+            ctx.Process(target=_worker_brpopbatch_loop, args=(host, port, key, batch_sizes[i], 2000, bursts, result_q))
+            for i in range(num_consumers)
+        ]
+        for proc in procs:
+            proc.start()
+
+        time.sleep(0.1)
+        for _ in range(bursts):
+            values = [str(i) for i in range(sum(batch_sizes))]
+            asyncio.run(_push_values(key, *values))
+
+        results = [result_q.get(timeout=5) for _ in range(num_consumers)]
+
+        for proc in procs:
+            proc.join(timeout=2)
+
+        asyncio.run(_delete_key(key))
+
+        self._assert_no_worker_errors(results)
+        counts = [res["count"] for res in results if isinstance(res, dict) and "count" in res]
+        self.assertEqual(len(counts), num_consumers)
+        self.assertEqual(sum(counts), sum(batch_sizes) * bursts)
+
+    def test_brpops_mixed_stress(self):
+        """Stress test: mix brpopall and brpopbatch consumers on separate keys."""
+        _set_isolated_test_rnd_seed()
+        host = os.environ.get("REDIS_HOST", "redis")
+        port = int(os.environ.get("REDIS_PORT", "6379"))
+        ctx = multiprocessing.get_context("spawn")
+
+        bursts = 10
+        num_consumers = random.randint(8, 16)
+        split = num_consumers // 2
+        num_all = split
+        num_batch = num_consumers - split
+        batch_sizes = [random.randint(1, 5) for _ in range(num_batch)]
+        key_all = f"testq::{''.join(random.choices(string.ascii_letters + string.digits, k=10))}"
+        key_batch = f"testq::{''.join(random.choices(string.ascii_letters + string.digits, k=10))}"
+        result_q = ctx.Queue()
+
+        procs = []
+        for _ in range(num_all):
+            procs.append(ctx.Process(target=_worker_brpopall_loop, args=(host, port, key_all, 2000, bursts, result_q)))
+        for i in range(num_batch):
+            procs.append(
+                ctx.Process(
+                    target=_worker_brpopbatch_loop,
+                    args=(host, port, key_batch, batch_sizes[i], 2000, bursts, result_q),
+                )
+            )
+        for proc in procs:
+            proc.start()
+
+        time.sleep(0.1)
+        for _ in range(bursts):
+            for _ in range(num_all):
+                asyncio.run(_push_values(key_all, "x", "y"))
+            values = [str(i) for i in range(sum(batch_sizes))]
+            asyncio.run(_push_values(key_batch, *values))
+
+        results = [result_q.get(timeout=5) for _ in range(num_consumers)]
+
+        for proc in procs:
+            proc.join(timeout=2)
+
+        asyncio.run(_delete_key(key_all))
+        asyncio.run(_delete_key(key_batch))
+
+        self._assert_no_worker_errors(results)
+        counts = [res["count"] for res in results if isinstance(res, dict) and "count" in res]
+        self.assertEqual(len(counts), num_consumers)
+        expected_total = (num_all * bursts * 2) + (sum(batch_sizes) * bursts)
+        self.assertEqual(sum(counts), expected_total)
