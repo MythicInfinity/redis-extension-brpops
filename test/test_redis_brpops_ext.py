@@ -17,8 +17,7 @@ def _get_redis_client() -> redis.Redis:
     return redis.Redis(
         host=os.environ.get("REDIS_HOST", "redis"),
         port=int(os.environ.get("REDIS_PORT", "6379")),
-        db=os.environ.get("REDIS_DB", None),
-        password=os.environ.get("REDIS_PASSWORD", nONE),
+        decode_responses=False
     )
 
 
